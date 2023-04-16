@@ -4,6 +4,7 @@ import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.fftpack
+import librosa
 from scipy.io import wavfile
 from PIL import Image
 from math import log
@@ -301,6 +302,20 @@ def png2fea(dir_name):
         print('Processing file: ', f)
         features[f] = np.array(Image.open(f).convert('L'), dtype=np.float64)
     return features
+
+
+def read_wav_file(file_path):
+    sample_rate, audio_samples = scipy.io.wavfile.read(file_path)
+    return sample_rate, audio_samples
+
+def apply_pre_emphasis(audio_samples, pre_emphasis_coeff=0.97):
+    emphasized_audio = np.append(audio_samples[0], audio_samples[1:] - pre_emphasis_coeff * audio_samples[:-1])
+    return emphasized_audio
+
+
+def extract_mfcc(emphasized_audio, sample_rate, n_mfcc=13):
+    mfcc = librosa.feature.mfcc(y=emphasized_audio, sr=sample_rate, n_mfcc=n_mfcc)
+    return mfcc.T
 
 
 def demo_gmm():
