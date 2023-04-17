@@ -346,3 +346,23 @@ def apply_time_shifting(audio_file, shift_ms=500):
     silence = AudioSegment.silent(duration=shift_ms)
     time_shifted_audio = silence + audio
     return time_shifted_audio
+
+
+def get_directory(
+        directory,
+        audio_adjust_enabled=None,
+        reduce_noise_enabled=None,
+        data_augmentation_enabled=None,
+        data_pre_emphasis_enabled=None
+):
+    if data_augmentation_enabled:
+        directory = directory + "/da/"
+    elif data_pre_emphasis_enabled:
+        directory = directory + "/pe/"
+    elif reduce_noise_enabled:
+        directory = directory + "/rn/"
+    elif audio_adjust_enabled:
+        directory = directory + "/rs/"
+    else:
+        directory = directory + "/"
+    return directory
