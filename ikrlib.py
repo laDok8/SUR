@@ -1,14 +1,15 @@
 from glob import glob
 
-import librosa
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.fftpack
+import librosa
+from scipy.io import wavfile
 from PIL import Image
 from math import log
 from numpy import ravel, diag, newaxis, ones, array, vstack, hstack, pi, tile
-from numpy.linalg import eigh, inv
+from numpy.linalg import eigh, inv, norm
 from numpy.random import rand, randn, randint
 from scipy.spatial.distance import cdist
 from scipy.special import logsumexp
@@ -120,7 +121,7 @@ def train_gmm(x, ws, mus, covs):
 def rand_gmm(n, ws, mus, covs):
     """
     RAND_GAUSS  Gaussian mixture distributed random numbers.
-    X = RAND_GMM(N, Ws, MUs, COVs) returns matrix with N rows, where each 
+    X = RAND_GMM(N, Ws, MUs, COVs) returns matrix with N rows, where each
     column is a vector chosen from a distribution represnted by a Gaussian
     Mixture Model. The GMM parameters are mixture component mean vectors given
     by rows of M-by-D matrix MUs, covariance matrices given by M-by-D-by-D
@@ -182,7 +183,7 @@ def eval_nnet(x, w1, w2):
     - X are the input features, datapoints are stored column-wise
     - W1 weights of 1st layer (first column contain bias)
     - W2 weights of 2nd layer (first column contain bias)
-    
+
     Returns the network outputs (single dimensional)
     """
     h = logistic_sigmoid(np.c_[np.ones(len(x)), x].dot(w1))
@@ -210,34 +211,91 @@ def train_nnet(X, T, w1, w2, epsilon):
 
 
 def framing(a, window, shift=1):
-    shape = ((a.shape[0] - window) / shift + 1, window) + a.shape[1:]
+    shape = ((a.shape[0] - window) // shift + 1, window) + a.shape[1:]
     strides = (a.strides[0] * shift, a.strides[0]) + a.strides[1:]
     return np.lib.stride_tricks.as_strided(a, shape=shape, strides=strides)
 
 
 def spectrogram(x, window, noverlap=None, nfft=None):
     if np.isscalar(window): window = np.hamming(window)
-    if noverlap is None:    noverlap = window.size / 2
+    if noverlap is None:    noverlap = window.size // 2
     if nfft is None:    nfft = window.size
     x = framing(x, window.size, window.size - noverlap)
     x = scipy.fftpack.fft(x * window, nfft)
-    return x[:, :x.shape[1] / 2 + 1]
+    return x[:, :x.shape[1] // 2 + 1]
 
 
 def wav16khz2mfcc(dir_name):
     """
-    Loads all *.wav files from directory dir_name (must be 16kHz), converts them into MFCC 
+    Loads all *.wav files from directory dir_name (must be 16kHz), converts them into MFCC
     features (13 coefficients) and stores them into a dictionary. Keys are the file names
     and values and 2D numpy arrays of MFCC features.
     """
     features = {}
     for f in glob(dir_name + '/*.wav'):
         print('Processing file: ', f)
-        s, rate = librosa.load(f, sr=None)
+        rate, s = wavfile.read(f)
+
         assert (rate == 16000)
-        features[f] = librosa.feature.mfcc(y=s, sr=16000, n_mfcc=13)
-        # SMAZAT MFCC old
+        features[f] = mfcc(s, 400, 240, 512, 16000, 23, 13)
     return features
+
+
+def mfcc(s, window, noverlap, nfft, fs, nbanks, nceps):
+    # MFCC Mel Frequency Cepstral Coefficients
+    #   CPS = MFCC(s, FFTL, Fs, WINDOW, NOVERLAP, NBANKS, NCEPS) returns
+    #   NCEPS-by-M matrix of MFCC coeficients extracted form signal s, where
+    #   M is the number of extracted frames, which can be computed as
+    #   floor((length(S)-NOVERLAP)/(WINDOW-NOVERLAP)). Remaining parameters
+    #   have the following meaning:
+    #
+    #   NFFT          - number of frequency points used to calculate the discrete
+    #                   Fourier transforms
+    #   Fs            - sampling frequency [Hz]
+    #   WINDOW        - window lentgth for frame (in samples)
+    #   NOVERLAP      - overlapping between frames (in samples)
+    #   NBANKS        - numer of mel filter bank bands
+    #   NCEPS         - number of cepstral coefficients - the output dimensionality
+    #
+    #   See also SPECTROGRAM
+
+    # Add low level noise (40dB SNR) to avoid log of zeros
+    snrdb = 40
+    noise = rand(s.shape[0])
+    s = s + noise.dot(norm(s, 2)) / norm(noise, 2) / (10 ** (snrdb / 20))
+
+    mfb = mel_filter_bank(nfft, nbanks, fs, 32)
+    dct_mx = scipy.fftpack.idct(np.eye(nceps, nbanks), norm='ortho')  # the same DCT as in matlab
+
+    S = spectrogram(s, window, noverlap, nfft)
+    return dct_mx.dot(np.log(mfb.T.dot(np.abs(S.T)))).T
+
+
+def mel_filter_bank(nfft, nbands, fs, fstart=0, fend=None):
+    """Returns mel filterbank as an array (nfft/2+1 x nbands)
+    nfft   - number of samples for FFT computation
+    nbands - number of filter bank bands
+    fs     - sampling frequency (Hz)
+    fstart - frequency (Hz) where the first filter strats
+    fend   - frequency (Hz) where the last  filter ends (default fs/2)
+    """
+    if not fend:
+        fend = 0.5 * fs
+
+    cbin = np.round(mel_inv(np.linspace(mel(fstart), mel(fend), nbands + 2)) / fs * nfft).astype(int)
+    mfb = np.zeros((nfft // 2 + 1, nbands))
+    for ii in range(nbands):
+        mfb[cbin[ii]:  cbin[ii + 1] + 1, ii] = np.linspace(0., 1., cbin[ii + 1] - cbin[ii] + 1)
+        mfb[cbin[ii + 1]:cbin[ii + 2] + 1, ii] = np.linspace(1., 0., cbin[ii + 2] - cbin[ii + 1] + 1)
+    return mfb
+
+
+def mel_inv(x):
+    return (np.exp(x / 1127.) - 1.) * 700.
+
+
+def mel(x):
+    return 1127. * np.log(1. + x / 700.)
 
 
 def png2fea(dir_name):
@@ -250,6 +308,21 @@ def png2fea(dir_name):
         print('Processing file: ', f)
         features[f] = np.array(Image.open(f).convert('L'), dtype=np.float64)
     return features
+
+
+def read_wav_file(file_path):
+    sample_rate, audio_samples = scipy.io.wavfile.read(file_path)
+    return sample_rate, audio_samples
+
+
+def apply_pre_emphasis(audio_samples, pre_emphasis_coeff=0.97):
+    emphasized_audio = np.append(audio_samples[0], audio_samples[1:] - pre_emphasis_coeff * audio_samples[:-1])
+    return emphasized_audio
+
+
+def extract_mfcc(emphasized_audio, sample_rate, n_mfcc=13):
+    mfcc = librosa.feature.mfcc(y=emphasized_audio, sr=sample_rate, n_mfcc=n_mfcc)
+    return mfcc.T
 
 
 def demo_gmm():
