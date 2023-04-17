@@ -13,6 +13,7 @@ from numpy.linalg import eigh, inv, norm
 from numpy.random import rand, randn, randint
 from scipy.spatial.distance import cdist
 from scipy.special import logsumexp
+from pydub import AudioSegment
 
 
 def k_nearest_neighbours(test_data, class1, class2, k):
@@ -318,90 +319,27 @@ def extract_mfcc(emphasized_audio, sample_rate, n_mfcc=13):
     return mfcc.T
 
 
-def demo_gmm():
-    x1 = hstack([rand_gauss(400, array([50, 40]), array([[100, 70], [70, 100]])),
-                 rand_gauss(200, array([55, 75]), array([[25, 0], [0, 25]]))])
-    x2 = hstack([rand_gauss(400, array([45, 60]), array([[40, 0], [0, 40]])),
-                 rand_gauss(200, array([30, 40]), array([[20, 0], [0, 40]]))])
-    (mu1, cov1) = train_gauss(x1)
-    (mu2, cov2) = train_gauss(x2)
-    p1 = p2 = 0.5
+def apply_time_stretching(audio_file, speed=0.9):
+    audio = AudioSegment.from_wav(audio_file)
+    samples = audio.get_array_of_samples()
+    sample_rate = audio.frame_rate
 
-    plt.plot(x1[0, :], x1[1, :], 'r.')
-    plt.plot(x2[0, :], x2[1, :], 'b.')
-    gellipse(mu1, cov1, 100, 'r')
-    gellipse(mu2, cov2, 100, 'b')
-    ax = plt.gca()
-    plt.show()
+    new_samples = AudioSegment(
+        samples.tobytes(),
+        frame_rate=int(sample_rate * speed),
+        sample_width=audio.sample_width,
+        channels=audio.channels
+    )
 
-    # make hard decision - return one to decide for calss X1 and zero otherwise
-    hard_decision = lambda x: logpdf_gauss(x, mu1, cov1) + log(p1) > logpdf_gauss(x, mu2, cov2) + log(p2)
+    return new_samples.set_frame_rate(sample_rate)
 
-    # compute posterior probability for class X1
-    x1_posterior = lambda x: logistic_sigmoid(
-        logpdf_gauss(x, mu1, cov1) + log(p1) - logpdf_gauss(x, mu2, cov2) - log(p2))
+def apply_pitch_shifting(audio_file, semitones=2):
+    audio = AudioSegment.from_wav(audio_file)
+    pitch_shifted_audio = audio._spawn(audio.raw_data, overrides={'frame_rate': int(audio.frame_rate * (2.0 ** (semitones / 12.0)))})
+    return pitch_shifted_audio.set_frame_rate(audio.frame_rate)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2)
-    plot2dfun(hard_decision, ax, 100, ax=ax1)
-    ax1.plot(x1[0, :], x1[1, :], 'r.')
-    ax1.plot(x2[0, :], x2[1, :], 'b.')
-    gellipse(mu1, cov1, 100, 'r', ax=ax1)
-    gellipse(mu2, cov2, 100, 'b', ax=ax1)
-
-    plot2dfun(x1_posterior, ax, 100, ax=ax2)
-    ax2.plot(x1[0, :], x1[1, :], 'r.')
-    ax2.plot(x2[0, :], x2[1, :], 'b.')
-    gellipse(mu1, cov1, 100, 'r', ax=ax2)
-    gellipse(mu2, cov2, 100, 'b', ax=ax2)
-    plt.show()
-
-    m1 = 2
-    mus1 = x1[:, randint(1, x1.shape[1], (m1))]
-    covs1 = tile(cov1, (m1, 1, 1))
-    ws1 = ones((m1)) / m1
-
-    m2 = 2
-    mus2 = x2[:, randint(1, x2.shape[1], (m2))]
-    covs2 = tile(cov2, (m2, 1, 1))
-    ws2 = ones((m2)) / m2
-
-    fig = plt.figure()
-    ims = []
-
-    for i in range(30):
-        im = plt.plot(x1[0, :], x1[1, :], 'r.') + plt.plot(x2[0, :], x2[1, :], 'b.')
-        for j in range(m1):
-            im += gellipse(mus1[:, j], covs1[j, :, :], 100, 'r', lw=round(ws1[j] * 10))
-        for j in range(m2):
-            im += gellipse(mus2[:, j], covs2[j, :, :], 100, 'b', lw=round(ws2[j] * 10))
-        ims.append(im)
-
-        (ws1, mus1, covs1, ttl1) = train_gmm(x1, ws1, mus1, covs1)
-        (ws2, mus2, covs2, ttl2) = train_gmm(x2, ws2, mus2, covs2)
-
-        print('Total log-likelihood: %s for class X1; %s for class X2' % (ttl1, ttl2))
-
-    anim = animation.ArtistAnimation(fig, ims, interval=200, repeat_delay=3000,
-                                     blit=True)
-    plt.show()
-
-    fig, (ax1, ax2) = plt.subplots(1, 2)
-    hard_decision = lambda x: logpdf_gmm(x, ws1, mus1, covs1) + log(p1) > logpdf_gmm(x, ws2, mus2, covs2) + log(p2)
-    plot2dfun(hard_decision, ax, 100, ax=ax1)
-    ax1.plot(x1[0, :], x1[1, :], 'r.')
-    ax1.plot(x2[0, :], x2[1, :], 'b.')
-    for j in range(m1):
-        gellipse(mus1[:, j], covs1[j, :, :], 100, 'r', lw=round(ws1[j] * 10), ax=ax1)
-    for j in range(m2):
-        gellipse(mus2[:, j], covs2[j, :, :], 100, 'b', lw=round(ws2[j] * 10), ax=ax1)
-
-    x1_posterior = lambda x: logistic_sigmoid(
-        logpdf_gmm(x, ws1, mus1, covs1) + log(p1) - logpdf_gmm(x, ws2, mus2, covs2) - log(p2))
-    plot2dfun(x1_posterior, ax, 100, ax=ax2)
-    ax2.plot(x1[0, :], x1[1, :], 'r.')
-    ax2.plot(x2[0, :], x2[1, :], 'b.')
-    for j in range(m1):
-        gellipse(mus1[:, j], covs1[j, :, :], 100, 'r', lw=round(ws1[j] * 10), ax=ax2)
-    for j in range(m2):
-        gellipse(mus2[:, j], covs2[j, :, :], 100, 'b', lw=round(ws2[j] * 10), ax=ax2)
-    plt.show()
+def apply_time_shifting(audio_file, shift_ms=500):
+    audio = AudioSegment.from_wav(audio_file)
+    silence = AudioSegment.silent(duration=shift_ms)
+    time_shifted_audio = silence + audio
+    return time_shifted_audio
