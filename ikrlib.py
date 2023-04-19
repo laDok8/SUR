@@ -2,6 +2,7 @@ from glob import glob
 
 import matplotlib.animation as animation
 import librosa
+import os
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.fftpack
@@ -312,14 +313,9 @@ def read_wav_file(file_path):
     sample_rate, audio_samples = scipy.io.wavfile.read(file_path)
     return sample_rate, audio_samples
 
-def apply_pre_emphasis(audio_samples, pre_emphasis_coeff=0.97):
+def apply_pre_emphasis(audio_samples, pre_emphasis_coeff=0.96):
     emphasized_audio = np.append(audio_samples[0], audio_samples[1:] - pre_emphasis_coeff * audio_samples[:-1])
     return emphasized_audio
-
-
-def extract_mfcc(emphasized_audio, sample_rate, n_mfcc=13):
-    mfcc = librosa.feature.mfcc(y=emphasized_audio, sr=sample_rate, n_mfcc=n_mfcc)
-    return mfcc.T
 
 
 def apply_time_stretching(audio_file, speed=0.9):
@@ -352,17 +348,30 @@ def get_directory(
         directory,
         audio_adjust_enabled=None,
         reduce_noise_enabled=None,
+        data_pre_emphasis_enabled=None,
         data_augmentation_enabled=None,
-        data_pre_emphasis_enabled=None
 ):
     if data_augmentation_enabled:
-        directory = directory + "/da/"
+        directory = directory + "/da"
     elif data_pre_emphasis_enabled:
-        directory = directory + "/pe/"
+        directory = directory + "/pe"
     elif reduce_noise_enabled:
-        directory = directory + "/rn/"
+        directory = directory + "/rn"
     elif audio_adjust_enabled:
-        directory = directory + "/rs/"
+        directory = directory + "/rs"
     else:
         directory = directory + "/"
     return directory
+
+
+def get_root_dir(path):
+    root_dir = os.path.dirname(path)
+    if not root_dir:
+        return path
+    return root_dir
+
+
+def extract_mfcc(emphasized_audio, sample_rate=16000, n_mfcc=13):
+    assert(sample_rate == 16000)
+    mfcc = librosa.feature.mfcc(y=emphasized_audio, sr=sample_rate, n_mfcc=n_mfcc)
+    return mfcc.T
