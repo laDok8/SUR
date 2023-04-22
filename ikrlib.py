@@ -1,15 +1,12 @@
 from glob import glob
 
 import librosa
-import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.fftpack
-from PIL import Image
-from math import log
-from numpy import ravel, diag, newaxis, ones, array, vstack, hstack, pi, tile
+from numpy import ravel, diag, newaxis, array, vstack, pi
 from numpy.linalg import eigh, inv
-from numpy.random import rand, randn, randint
+from numpy.random import rand, randn
 from scipy.spatial.distance import cdist
 from scipy.special import logsumexp
 
@@ -133,7 +130,6 @@ def rand_gmm(n, ws, mus, covs):
 
 
 # Linear classifiers
-
 def train_generative_linear_classifier(x, class_id):
     true_data = x[class_id == 1]
     false_data = x[class_id != 1]
@@ -248,94 +244,5 @@ def png2fea(dir_name):
     features = {}
     for f in glob(dir_name + '/*.png'):
         print('Processing file: ', f)
-        features[f] = np.array(Image.open(f).convert('L'), dtype=np.float64)
+        features[f] = plt.imread(f, True).astype(np.float64)
     return features
-
-
-def demo_gmm():
-    x1 = hstack([rand_gauss(400, array([50, 40]), array([[100, 70], [70, 100]])),
-                 rand_gauss(200, array([55, 75]), array([[25, 0], [0, 25]]))])
-    x2 = hstack([rand_gauss(400, array([45, 60]), array([[40, 0], [0, 40]])),
-                 rand_gauss(200, array([30, 40]), array([[20, 0], [0, 40]]))])
-    (mu1, cov1) = train_gauss(x1)
-    (mu2, cov2) = train_gauss(x2)
-    p1 = p2 = 0.5
-
-    plt.plot(x1[0, :], x1[1, :], 'r.')
-    plt.plot(x2[0, :], x2[1, :], 'b.')
-    gellipse(mu1, cov1, 100, 'r')
-    gellipse(mu2, cov2, 100, 'b')
-    ax = plt.gca()
-    plt.show()
-
-    # make hard decision - return one to decide for calss X1 and zero otherwise
-    hard_decision = lambda x: logpdf_gauss(x, mu1, cov1) + log(p1) > logpdf_gauss(x, mu2, cov2) + log(p2)
-
-    # compute posterior probability for class X1
-    x1_posterior = lambda x: logistic_sigmoid(
-        logpdf_gauss(x, mu1, cov1) + log(p1) - logpdf_gauss(x, mu2, cov2) - log(p2))
-
-    fig, (ax1, ax2) = plt.subplots(1, 2)
-    plot2dfun(hard_decision, ax, 100, ax=ax1)
-    ax1.plot(x1[0, :], x1[1, :], 'r.')
-    ax1.plot(x2[0, :], x2[1, :], 'b.')
-    gellipse(mu1, cov1, 100, 'r', ax=ax1)
-    gellipse(mu2, cov2, 100, 'b', ax=ax1)
-
-    plot2dfun(x1_posterior, ax, 100, ax=ax2)
-    ax2.plot(x1[0, :], x1[1, :], 'r.')
-    ax2.plot(x2[0, :], x2[1, :], 'b.')
-    gellipse(mu1, cov1, 100, 'r', ax=ax2)
-    gellipse(mu2, cov2, 100, 'b', ax=ax2)
-    plt.show()
-
-    m1 = 2
-    mus1 = x1[:, randint(1, x1.shape[1], (m1))]
-    covs1 = tile(cov1, (m1, 1, 1))
-    ws1 = ones((m1)) / m1
-
-    m2 = 2
-    mus2 = x2[:, randint(1, x2.shape[1], (m2))]
-    covs2 = tile(cov2, (m2, 1, 1))
-    ws2 = ones((m2)) / m2
-
-    fig = plt.figure()
-    ims = []
-
-    for i in range(30):
-        im = plt.plot(x1[0, :], x1[1, :], 'r.') + plt.plot(x2[0, :], x2[1, :], 'b.')
-        for j in range(m1):
-            im += gellipse(mus1[:, j], covs1[j, :, :], 100, 'r', lw=round(ws1[j] * 10))
-        for j in range(m2):
-            im += gellipse(mus2[:, j], covs2[j, :, :], 100, 'b', lw=round(ws2[j] * 10))
-        ims.append(im)
-
-        (ws1, mus1, covs1, ttl1) = train_gmm(x1, ws1, mus1, covs1)
-        (ws2, mus2, covs2, ttl2) = train_gmm(x2, ws2, mus2, covs2)
-
-        print('Total log-likelihood: %s for class X1; %s for class X2' % (ttl1, ttl2))
-
-    anim = animation.ArtistAnimation(fig, ims, interval=200, repeat_delay=3000,
-                                     blit=True)
-    plt.show()
-
-    fig, (ax1, ax2) = plt.subplots(1, 2)
-    hard_decision = lambda x: logpdf_gmm(x, ws1, mus1, covs1) + log(p1) > logpdf_gmm(x, ws2, mus2, covs2) + log(p2)
-    plot2dfun(hard_decision, ax, 100, ax=ax1)
-    ax1.plot(x1[0, :], x1[1, :], 'r.')
-    ax1.plot(x2[0, :], x2[1, :], 'b.')
-    for j in range(m1):
-        gellipse(mus1[:, j], covs1[j, :, :], 100, 'r', lw=round(ws1[j] * 10), ax=ax1)
-    for j in range(m2):
-        gellipse(mus2[:, j], covs2[j, :, :], 100, 'b', lw=round(ws2[j] * 10), ax=ax1)
-
-    x1_posterior = lambda x: logistic_sigmoid(
-        logpdf_gmm(x, ws1, mus1, covs1) + log(p1) - logpdf_gmm(x, ws2, mus2, covs2) - log(p2))
-    plot2dfun(x1_posterior, ax, 100, ax=ax2)
-    ax2.plot(x1[0, :], x1[1, :], 'r.')
-    ax2.plot(x2[0, :], x2[1, :], 'b.')
-    for j in range(m1):
-        gellipse(mus1[:, j], covs1[j, :, :], 100, 'r', lw=round(ws1[j] * 10), ax=ax2)
-    for j in range(m2):
-        gellipse(mus2[:, j], covs2[j, :, :], 100, 'b', lw=round(ws2[j] * 10), ax=ax2)
-    plt.show()
