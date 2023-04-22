@@ -1,14 +1,24 @@
 from glob import glob
 
+import matplotlib.animation as animation
 import librosa
+import os
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.fftpack
+import librosa
+from scipy.io import wavfile
+from PIL import Image
+from math import log
+from numpy import ravel, diag, newaxis, ones, array, vstack, hstack, pi, tile
+from numpy.linalg import eigh, inv, norm
+from numpy.random import rand, randn, randint
 from numpy import ravel, diag, newaxis, array, vstack, pi
 from numpy.linalg import eigh, inv
 from numpy.random import rand, randn
 from scipy.spatial.distance import cdist
 from scipy.special import logsumexp
+from pydub import AudioSegment
 
 
 def k_nearest_neighbours(test_data, class1, class2, k):
@@ -206,18 +216,17 @@ def train_nnet(X, T, w1, w2, epsilon):
 
 
 def framing(a, window, shift=1):
-    shape = ((a.shape[0] - window) / shift + 1, window) + a.shape[1:]
-    strides = (a.strides[0] * shift, a.strides[0]) + a.strides[1:]
+    shape = ((a.shape[0] - window) // shift + 1, window) + a.shape[1:]
+    strides = (a.strides[0]*shift,a.strides[0]) + a.strides[1:]
     return np.lib.stride_tricks.as_strided(a, shape=shape, strides=strides)
-
 
 def spectrogram(x, window, noverlap=None, nfft=None):
     if np.isscalar(window): window = np.hamming(window)
-    if noverlap is None:    noverlap = window.size / 2
-    if nfft is None:    nfft = window.size
-    x = framing(x, window.size, window.size - noverlap)
-    x = scipy.fftpack.fft(x * window, nfft)
-    return x[:, :x.shape[1] / 2 + 1]
+    if noverlap is None:    noverlap = window.size // 2
+    if nfft     is None:    nfft     = window.size
+    x = framing(x, window.size, window.size-noverlap)
+    x = scipy.fftpack.fft(x*window, nfft)
+    return x[:,:x.shape[1]//2+1]
 
 
 def wav16khz2mfcc(dir_name):
@@ -229,12 +238,64 @@ def wav16khz2mfcc(dir_name):
     features = {}
     for f in glob(dir_name + '/*.wav'):
         print('Processing file: ', f)
-        s, rate = librosa.load(f, sr=None)
-        assert (rate == 16000)
-        features[f] = librosa.feature.mfcc(y=s, sr=16000, n_mfcc=13)
-        # SMAZAT MFCC old
+        rate, s = wavfile.read(f)
+
+        assert(rate == 16000)
+        features[f] = mfcc(s, 400, 240, 512, 16000, 23, 13)
     return features
 
+def mfcc(s, window, noverlap, nfft, fs, nbanks, nceps):
+    #MFCC Mel Frequency Cepstral Coefficients
+    #   CPS = MFCC(s, FFTL, Fs, WINDOW, NOVERLAP, NBANKS, NCEPS) returns
+    #   NCEPS-by-M matrix of MFCC coeficients extracted form signal s, where
+    #   M is the number of extracted frames, which can be computed as
+    #   floor((length(S)-NOVERLAP)/(WINDOW-NOVERLAP)). Remaining parameters
+    #   have the following meaning:
+    #
+    #   NFFT          - number of frequency points used to calculate the discrete
+    #                   Fourier transforms
+    #   Fs            - sampling frequency [Hz]
+    #   WINDOW        - window lentgth for frame (in samples)
+    #   NOVERLAP      - overlapping between frames (in samples)
+    #   NBANKS        - numer of mel filter bank bands
+    #   NCEPS         - number of cepstral coefficients - the output dimensionality
+    #
+    #   See also SPECTROGRAM
+
+    # Add low level noise (40dB SNR) to avoid log of zeros
+    snrdb = 40
+    noise = rand(s.shape[0])
+    s = s + noise.dot(norm(s, 2)) / norm(noise, 2) / (10 ** (snrdb / 20))
+
+    mfb = mel_filter_bank(nfft, nbanks, fs, 32)
+    dct_mx = scipy.fftpack.idct(np.eye(nceps, nbanks), norm='ortho') # the same DCT as in matlab
+
+    S = spectrogram(s, window, noverlap, nfft)
+    return dct_mx.dot(np.log(mfb.T.dot(np.abs(S.T)))).T
+
+def mel_filter_bank(nfft, nbands, fs, fstart=0, fend=None):
+    """Returns mel filterbank as an array (nfft/2+1 x nbands)
+    nfft   - number of samples for FFT computation
+    nbands - number of filter bank bands
+    fs     - sampling frequency (Hz)
+    fstart - frequency (Hz) where the first filter strats
+    fend   - frequency (Hz) where the last  filter ends (default fs/2)
+    """
+    if not fend:
+      fend = 0.5 * fs
+
+    cbin = np.round(mel_inv(np.linspace(mel(fstart), mel(fend), nbands + 2)) / fs * nfft).astype(int)
+    mfb = np.zeros((nfft // 2 + 1, nbands))
+    for ii in range(nbands):
+        mfb[cbin[ii]:  cbin[ii+1]+1, ii] = np.linspace(0., 1., cbin[ii+1] - cbin[ii]   + 1)
+        mfb[cbin[ii+1]:cbin[ii+2]+1, ii] = np.linspace(1., 0., cbin[ii+2] - cbin[ii+1] + 1)
+    return mfb
+
+def mel_inv(x):
+    return (np.exp(x/1127.)-1.)*700.
+
+def mel(x):
+    return 1127.*np.log(1. + x/700.)
 
 def png2fea(dir_name):
     """
@@ -246,3 +307,71 @@ def png2fea(dir_name):
         print('Processing file: ', f)
         features[f] = plt.imread(f, True).astype(np.float64)
     return features
+
+
+def read_wav_file(file_path):
+    sample_rate, audio_samples = scipy.io.wavfile.read(file_path)
+    return sample_rate, audio_samples
+
+def apply_pre_emphasis(audio_samples, pre_emphasis_coeff=0.96):
+    emphasized_audio = np.append(audio_samples[0], audio_samples[1:] - pre_emphasis_coeff * audio_samples[:-1])
+    return emphasized_audio
+
+
+def apply_time_stretching(audio_file, speed=0.9):
+    audio = AudioSegment.from_wav(audio_file)
+    samples = audio.get_array_of_samples()
+    sample_rate = audio.frame_rate
+
+    new_samples = AudioSegment(
+        samples.tobytes(),
+        frame_rate=int(sample_rate * speed),
+        sample_width=audio.sample_width,
+        channels=audio.channels
+    )
+
+    return new_samples.set_frame_rate(sample_rate)
+
+def apply_pitch_shifting(audio_file, semitones=2):
+    audio = AudioSegment.from_wav(audio_file)
+    pitch_shifted_audio = audio._spawn(audio.raw_data, overrides={'frame_rate': int(audio.frame_rate * (2.0 ** (semitones / 12.0)))})
+    return pitch_shifted_audio.set_frame_rate(audio.frame_rate)
+
+def apply_time_shifting(audio_file, shift_ms=500):
+    audio = AudioSegment.from_wav(audio_file)
+    silence = AudioSegment.silent(duration=shift_ms)
+    time_shifted_audio = silence + audio
+    return time_shifted_audio
+
+
+def get_directory(
+        directory,
+        audio_adjust_enabled=None,
+        reduce_noise_enabled=None,
+        data_pre_emphasis_enabled=None,
+        data_augmentation_enabled=None,
+):
+    if data_augmentation_enabled:
+        directory = directory + "/da"
+    elif data_pre_emphasis_enabled:
+        directory = directory + "/pe"
+    elif reduce_noise_enabled:
+        directory = directory + "/rn"
+    elif audio_adjust_enabled:
+        directory = directory + "/rs"
+    else:
+        directory = directory + "/"
+    return directory
+
+
+def get_root_dir(path):
+    root_dir = os.path.dirname(path)
+    if not root_dir:
+        return path
+    return root_dir
+
+
+def extract_mfcc(emphasized_audio, sample_rate=16000, n_mfcc=13):
+    assert(sample_rate == 16000)
+    mfcc = librosa.feature.mfcc(y=emphasized_audio, sr=sample_rate, n_mfcc=n_mfcc)
+    return mfcc.T
