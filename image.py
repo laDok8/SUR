@@ -20,7 +20,7 @@ class CustomDataset(Dataset):
 
     def __getitem__(self, idx):
         label = self.labels[idx]
-        image = self.images[idx]      
+        image = self.images[idx]
         return image, label
 
     def __len__(self):
@@ -28,8 +28,8 @@ class CustomDataset(Dataset):
 
 CLASSES = 31
 
-# augment_images('dev', 'dev/da')
-# augment_images('train', 'train/da')
+augment_images('dev', 'dev/da')
+augment_images('train', 'train/da')
 
 def png2fea2(dir_name):
     """
@@ -47,7 +47,7 @@ train_y = np.empty((0),dtype=int)
 test_x = np.empty((0,80,80))
 test_y = np.empty((0),dtype=int)
 
-for i in range(1,CLASSES+1): 
+for i in range(1,CLASSES+1):
     train_i = np.array(list(png2fea2('dev/da/'+str(i)).values()))
     label_i = np.full(len(train_i),i-1)
     train_x = np.concatenate((train_x, train_i), axis=0)
