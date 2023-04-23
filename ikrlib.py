@@ -116,11 +116,16 @@ def train_gmm(x, ws, mus, covs):
     ws = gammasum / len(x)
     mus = gamma.dot(x) / gammasum[:, np.newaxis]
 
+    reg_const = 1e-6
     if covs[0].ndim == 1:  # diagonal covariance matrices
-        covs = gamma.dot(x ** 2) / gammasum[:, np.newaxis] - mus ** 2
+        covs = gamma.dot(x ** 2) / gammasum[:, np.newaxis] - mus ** 2 + reg_const
     else:
         covs = np.array(
             [(gamma[i] * x.T).dot(x) / gammasum[i] - mus[i][:, newaxis].dot(mus[[i]]) for i in range(len(ws))])
+
+        # Add regularization constant to the diagonal of each covariance matrix
+        for i in range(len(covs)):
+            covs[i] += np.eye(covs[i].shape[0]) * reg_const
     return ws, mus, covs, tll
 
 
@@ -348,13 +353,13 @@ def get_directory(
         directory,
         audio_adjust_enabled=None,
         reduce_noise_enabled=None,
-        data_pre_emphasis_enabled=None,
         data_augmentation_enabled=None,
+        data_pre_emphasis_enabled=None,
 ):
-    if data_augmentation_enabled:
-        directory = directory + "/da"
-    elif data_pre_emphasis_enabled:
+    if data_pre_emphasis_enabled:
         directory = directory + "/pe"
+    elif data_augmentation_enabled:
+        directory = directory + "/da"
     elif reduce_noise_enabled:
         directory = directory + "/rn"
     elif audio_adjust_enabled:
@@ -370,6 +375,18 @@ def get_root_dir(path):
         return path
     return root_dir
 
+
+def get_last_two_dirs(path):
+    dir1 = os.path.dirname(path)
+    if not dir1:
+        return path
+
+    dir2 = os.path.dirname(dir1)
+    if not dir2:
+        return path
+
+    last_two_dirs = os.path.join(os.path.basename(dir2), os.path.basename(dir1))
+    return last_two_dirs
 
 def extract_mfcc(emphasized_audio, sample_rate=16000, n_mfcc=13):
     assert(sample_rate == 16000)
