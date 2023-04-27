@@ -1,3 +1,4 @@
 SUR_projekt2022-2023.*
 dev/
 train/
+__pycache__/

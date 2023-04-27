@@ -114,14 +114,16 @@ def train_gmm(x, ws, mus, covs):
     tll = logevidence.sum()
     gammasum = gamma.sum(axis=1)
     ws = gammasum / len(x)
-    mus = gamma.dot(x) / gammasum[:, np.newaxis]
+
+    epsilon = 1e-8  # Small constant to avoid division by zero
+    mus = gamma.dot(x) / (gammasum[:, np.newaxis] + epsilon)
 
     reg_const = 1e-6
     if covs[0].ndim == 1:  # diagonal covariance matrices
         covs = gamma.dot(x ** 2) / gammasum[:, np.newaxis] - mus ** 2 + reg_const
     else:
         covs = np.array(
-            [(gamma[i] * x.T).dot(x) / gammasum[i] - mus[i][:, newaxis].dot(mus[[i]]) for i in range(len(ws))])
+            [(gamma[i] * x.T).dot(x) / (gammasum[i] + epsilon) - mus[i][:, newaxis].dot(mus[[i]]) for i in range(len(ws))])
 
         # Add regularization constant to the diagonal of each covariance matrix
         for i in range(len(covs)):
