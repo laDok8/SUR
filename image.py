@@ -1,17 +1,39 @@
 import os
 import torch
-import random
-
-import numpy as np
+import Augmentor
 import torch.nn as nn
-import torch.optim as optim
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
 
-from glob import glob
-from ikrlib import png2fea
-from augment import augment_images
-from PIL import Image, ImageEnhance, ImageOps
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset
+
+if torch.cuda.is_available():  
+    dev = "cuda:0" 
+else:  
+    dev = "cpu" 
+
+data_augmentation_enabled = True
+CLASSES = 31
+
+def augment_images(input_dir, output_dir, num_augmentations=int(1e3)):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    for cls in range(1, CLASSES+1):
+        in_dir = input_dir + '/' + str(cls)
+        print('Augmenting images in ' + in_dir)
+        out_dir = output_dir + '/' + str(cls)
+        print('Augmenting into ' + out_dir)
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+        p = Augmentor.Pipeline(source_directory=in_dir, output_directory="out")
+        p.random_brightness(probability=0.4, min_factor=0.01, max_factor=0.5)
+        p.rotate(probability=0.7, max_left_rotation=10, max_right_rotation=10)
+        p.zoom_random(probability=0.5, percentage_area=0.8)
+        p.flip_left_right(probability=0.3)
+        p.skew_tilt(probability=0.5, magnitude=0.1)
+        p.sample(num_augmentations)
+        #out is relative for augmentator :/ move
+        os.rename(os.path.join(input_dir,str(cls),'out'), os.path.join(output_dir,str(cls)))
 
 class CustomDataset(Dataset):
     def __init__(self, images, labels) -> None:
@@ -26,112 +48,88 @@ class CustomDataset(Dataset):
     def __len__(self):
         return len(self.labels)
 
-CLASSES = 31
-
-augment_images('dev', 'dev/da')
-augment_images('train', 'train/da')
-
-def png2fea2(dir_name):
-    """
-    Loads all *.png images from directory dir_name into a dictionary. Keys are the file names
-    and values and 2D numpy arrays with corresponding grayscale images
-    """
-    features = {}
-    for f in glob(dir_name + '/*.png'):
-        features[f] = np.array(Image.open(f).convert('L'), dtype=np.float64)
-    return features
-
-train_x = np.empty((0,80,80))
-train_y = np.empty((0),dtype=int)
-
-test_x = np.empty((0,80,80))
-test_y = np.empty((0),dtype=int)
-
-for i in range(1,CLASSES+1):
-    train_i = np.array(list(png2fea2('dev/da/'+str(i)).values()))
-    label_i = np.full(len(train_i),i-1)
-    train_x = np.concatenate((train_x, train_i), axis=0)
-    train_y = np.concatenate((train_y,label_i), axis=0)
-
-    test_i = np.array(list(png2fea2('test/da'+str(i)).values()))
-    label_i = np.full(len(test_i),i-1)
-    test_x = np.concatenate((test_x, train_i), axis=0)
-    test_y = np.concatenate((train_y,label_i), axis=0)
-
-print("Images were successfully loaded")
-
-train_x = np.array(train_x)
-test_x = np.array(test_x)
-
 class SmallCNNMultiClass(nn.Module):
-    def __init__(self, num_classes=31):
+    def __init__(self, num_classes=CLASSES):
         super(SmallCNNMultiClass, self).__init__()
-        self.conv1 = nn.Conv2d(1, 16, kernel_size=3, stride=1, padding=1)
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
-        self.dropout = nn.Dropout(p=0.5)
-        self.fc1 = nn.Linear(32 * 20 * 20, 64)
-        self.fc2 = nn.Linear(64, num_classes)
+        self.conv1 = nn.Conv2d(3, 8, 3, padding=1)
+        self.conv2 = nn.Conv2d(8, 16, 3, padding=1)
+        self.conv3 = nn.Conv2d(16, 32, 3, padding=1)
+        self.pool = nn.MaxPool2d(2, 2)
+        self.batch_norm1 = nn.BatchNorm2d(8)
+        self.batch_norm2 = nn.BatchNorm2d(16)
+        self.dropout = nn.Dropout2d(0.4)
+        self.fc1 = nn.Linear(32 * 10 * 10, 128)
+        self.fc2 = nn.Linear(128, num_classes)
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = self.pool(x)
-        x = F.relu(self.conv2(x))
-        x = self.pool(x)
-        x = x.view(-1, 32 * 20 * 20)
-        x = F.relu(self.fc1(x))
+        #VGG like
+        x = self.pool(F.relu(self.conv1(x)))  # 40x40x8
         x = self.dropout(x)
+        x = self.pool(F.relu(self.conv2(x)))  # 20x20x16
+        x = self.dropout(x)
+        x = self.pool(F.relu(self.conv3(x)))  # 10x10x32
+        x = x.view(-1, 32 * 10 * 10)  # 3200
+        x = self.fc1(x)  # 128
         x = self.fc2(x)
         return x
 
-# Convert NumPy arrays to PyTorch tensors
-train_tensors = torch.Tensor(train_x).unsqueeze(1)
-dev_tensors = torch.Tensor(test_x).unsqueeze(1)
+def fit(num_epochs, model, optimizer, criterion, train_loader, dev_loader):
+    # Training loop
+    losses = []
+    accuracys = []
+    for epoch in range(num_epochs):
+        model.train()
+        train_loss = 0
 
-# Create new TensorDataset instances with the modified labels
-train_dataset = CustomDataset(train_tensors, train_y)
-dev_dataset = CustomDataset(dev_tensors, train_y)
+        for inputs, labels in train_loader:
+            inputs, labels = inputs.to(dev), labels.to(dev)
+            optimizer.zero_grad()
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
+            loss.backward()
+            optimizer.step()
+            train_loss += loss.item()
 
-# import random
-# x, y = random.choice(train_dataset)
-# print(y)
+        if not epoch % 10:
+        # Evaluation on the dev set
+            model.eval()
+            correct = 0
+            total = 0
+            with torch.no_grad():
+                for inputs, labels in dev_loader:
+                    inputs, labels = inputs.to(dev), labels.to(dev)
+                    outputs = model(inputs)
+                    _, predicted = torch.max(outputs.data, 1)
+                    total += labels.size(0)
+                    correct += (predicted == labels).sum().item()
+            accuracy = correct / total
+            losses.append(train_loss)
+            accuracys.append(accuracy)
+            print(f'Epoch: {epoch+1}/{num_epochs}, Loss: {train_loss:.4f}, Accuracy: {accuracy:.4f}, {correct} and {total}')
 
-# import matplotlib.pyplot as plt
+    plt.figure()
+    plt.plot(accuracys)
 
-# plt.imshow(x[0,:,:])
-# plt.savefig('idk.png')
+    plt.figure()
+    plt.plot(losses)
 
-batch_size = 64
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-dev_loader = DataLoader(dev_dataset, batch_size=batch_size, shuffle=True)
-
-model = SmallCNNMultiClass()
-criterion = F.cross_entropy
-optimizer = optim.Adam(model.parameters(), lr=0.01)
-
-# Training loop
-num_epochs = 20
-for epoch in range(num_epochs):
-    model.train()
-    for inputs, labels in train_loader:
-        optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = criterion(outputs, labels)
-        loss.backward()
-        optimizer.step()
-        train_loss = loss.item()
-    train_loss = train_loss / len(train_loader.dataset)
-
-    # Evaluation on the dev set
+def eval(model, test_loader):
     model.eval()
     correct = 0
     total = 0
     with torch.no_grad():
-        for inputs, labels in dev_loader:
+        for inputs, labels in test_loader:
+            inputs, labels = inputs.to(dev), labels.to(dev)
             outputs = model(inputs)
-            predicted = torch.max(outputs, dim=1)
+            _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
-            correct += torch.sum(predicted.values == labels).item() / len(predicted)
-
+            correct += (predicted == labels).sum().item()
     accuracy = correct / total
-    print(f'Epoch: {epoch+1}/{num_epochs}, Loss: {train_loss:.4f}, Accuracy: {accuracy:.4f}')
+    print(f'Accuracy: {accuracy:.4f}, {correct} and {total}')
+
+def predict_image(image, model, dev):
+    xb = image.unsqueeze(0).to(dev)
+    yb = model(xb)
+    yb = yb.to(dev)
+    _, preds = torch.max(yb, dim=1)
+    return preds[0].item()
