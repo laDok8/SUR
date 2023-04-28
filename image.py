@@ -2,40 +2,16 @@ import os
 import torch
 import Augmentor
 import torch.nn as nn
+import torch.optim as optim
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
 
 from torch.utils.data import Dataset
+from torch.utils.data import DataLoader
 
-if torch.cuda.is_available():  
-    dev = "cuda:0" 
-else:  
-    dev = "cpu" 
-
-data_augmentation_enabled = True
 CLASSES = 31
 
-def augment_images(input_dir, output_dir, num_augmentations=int(1e3)):
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    for cls in range(1, CLASSES+1):
-        in_dir = input_dir + '/' + str(cls)
-        print('Augmenting images in ' + in_dir)
-        out_dir = output_dir + '/' + str(cls)
-        print('Augmenting into ' + out_dir)
-        if not os.path.exists(out_dir):
-            os.makedirs(out_dir)
-        p = Augmentor.Pipeline(source_directory=in_dir, output_directory="out")
-        p.random_brightness(probability=0.4, min_factor=0.01, max_factor=0.5)
-        p.rotate(probability=0.7, max_left_rotation=10, max_right_rotation=10)
-        p.zoom_random(probability=0.5, percentage_area=0.8)
-        p.flip_left_right(probability=0.3)
-        p.skew_tilt(probability=0.5, magnitude=0.1)
-        p.sample(num_augmentations)
-        #out is relative for augmentator :/ move
-        os.rename(os.path.join(input_dir,str(cls),'out'), os.path.join(output_dir,str(cls)))
-
 class CustomDataset(Dataset):
+
     def __init__(self, images, labels) -> None:
         self.images = images
         self.labels = labels
@@ -60,6 +36,7 @@ class SmallCNNMultiClass(nn.Module):
         self.dropout = nn.Dropout2d(0.4)
         self.fc1 = nn.Linear(32 * 10 * 10, 128)
         self.fc2 = nn.Linear(128, num_classes)
+        self.soft_max = nn.Softmax(dim=0)
 
     def forward(self, x):
         #VGG like
@@ -70,15 +47,17 @@ class SmallCNNMultiClass(nn.Module):
         x = self.pool(F.relu(self.conv3(x)))  # 10x10x32
         x = x.view(-1, 32 * 10 * 10)  # 3200
         x = self.fc1(x)  # 128
-        x = self.fc2(x)
+        x = self.soft_max(self.fc2(x))
         return x
 
-def fit(num_epochs, model, optimizer, criterion, train_loader, dev_loader):
-    # Training loop
+def train(model, train_dataset, test_dataset, optimizer, criterion, dev, num_epochs=200):
+    batch_size = 16
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+    dev_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
     losses = []
     accuracys = []
-    for epoch in range(num_epochs):
-        model.train()
+    for epochs in range(num_epochs):
+        # model.train()
         train_loss = 0
 
         for inputs, labels in train_loader:
@@ -90,7 +69,7 @@ def fit(num_epochs, model, optimizer, criterion, train_loader, dev_loader):
             optimizer.step()
             train_loss += loss.item()
 
-        if not epoch % 10:
+        if not epochs % 50:
         # Evaluation on the dev set
             model.eval()
             correct = 0
@@ -105,31 +84,31 @@ def fit(num_epochs, model, optimizer, criterion, train_loader, dev_loader):
             accuracy = correct / total
             losses.append(train_loss)
             accuracys.append(accuracy)
-            print(f'Epoch: {epoch+1}/{num_epochs}, Loss: {train_loss:.4f}, Accuracy: {accuracy:.4f}, {correct} and {total}')
+            print(f'Epoch: {epochs+1}/{num_epochs}, Loss: {train_loss:.4f}, Accuracy: {accuracy:.4f}, {correct} and {total}')
+    print(f'Epoch: {epochs+1}/{num_epochs}, Loss: {train_loss:.4f}, Accuracy: {accuracy:.4f}, {correct} and {total}')
 
-    plt.figure()
-    plt.plot(accuracys)
+    return accuracys, losses
 
-    plt.figure()
-    plt.plot(losses)
+# def predict(model, data):
+#     # return probabilities for all classes
+#     # to get max ->  _, predicted = torch.max(outputs.data, 1)
+#     model.eval()
+#     return model(inputs).data
 
-def eval(model, test_loader):
-    model.eval()
-    correct = 0
-    total = 0
-    with torch.no_grad():
-        for inputs, labels in test_loader:
-            inputs, labels = inputs.to(dev), labels.to(dev)
-            outputs = model(inputs)
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-    accuracy = correct / total
-    print(f'Accuracy: {accuracy:.4f}, {correct} and {total}')
 
-def predict_image(image, model, dev):
-    xb = image.unsqueeze(0).to(dev)
-    yb = model(xb)
-    yb = yb.to(dev)
-    _, preds = torch.max(yb, dim=1)
-    return preds[0].item()
+
+    
+# # convert 80,80,3 to 3,80,80
+#train_x = np.array(train_x)
+#train_x = np.transpose(train_x, (0, 3, 1, 2))
+
+# Convert NumPy arrays to PyTorch tensors
+#train_tensors = torch.Tensor(train_x)
+
+
+# Create new TensorDataset instances with the modified labels
+#train_dataset = CustomDataset(train_tensors, train_y)
+#print("Dataset was successfully created")
+
+#use defined classes
+#ImageModel = CnnTrain()

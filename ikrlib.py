@@ -21,14 +21,19 @@ from scipy.special import logsumexp
 from pydub import AudioSegment
 
 
-def png_load(dir_name):
+def png_load(dir_name, gray_scale):
     """
     Loads all *.png images
     """
     features = {}
-    for f in glob(dir_name + '/*.png'):
-        features[f] = np.array(Image.open(f), dtype=np.float64)
-    return features
+    if gray_scale:
+        for f in glob(dir_name + '/*.png'):
+            features[f] = np.array(Image.open(f).convert('L'), dtype=np.float64)
+        return features
+    else:
+        for f in glob(dir_name + '/*.png'):
+            features[f] = np.array(Image.open(f), dtype=np.float64)
+        return features
 
 
 def k_nearest_neighbours(test_data, class1, class2, k):
