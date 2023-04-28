@@ -7,7 +7,6 @@ import noisereduce as nr
 from pydub import AudioSegment
 from pydub.silence import detect_nonsilent
 
-
 class Audio:
     def __init__(self, CLASSES, train_path, dev_path):
         self.CLASSES = CLASSES
@@ -147,16 +146,16 @@ class Audio:
         self.audio_adjust_enabled = audio_adjust_enabled
         if self.audio_adjust_enabled:
             for i in range(1, self.CLASSES + 1):
-                Audio.audio_adjust(ilib.get_directory(f"train/{i}"))
-                Audio.audio_adjust(ilib.get_directory(f"dev/{i}"))
+                Audio.audio_adjust(ilib.get_directory(f"{self.train}/{i}"))
+                Audio.audio_adjust(ilib.get_directory(f"{self.dev}/{i}"))
         print("Silence was successfully removed")
 
     def do_reduce_noise(self, reduce_noise_enabled):
         self.reduce_noise_enabled = reduce_noise_enabled
         if reduce_noise_enabled:
             for i in range(1, self.CLASSES + 1):
-                Audio.reduce_noise(ilib.get_directory(f"train/{i}", self.audio_adjust_enabled))
-                Audio.reduce_noise(ilib.get_directory(f"dev/{i}", self.audio_adjust_enabled))
+                Audio.reduce_noise(ilib.get_directory(f"{self.train}/{i}", self.audio_adjust_enabled))
+                Audio.reduce_noise(ilib.get_directory(f"{self.dev}/{i}", self.audio_adjust_enabled))
 
             print("Noise was successfully removed")
 
@@ -164,7 +163,7 @@ class Audio:
         self.data_augmentation_enabled = data_augmentation_enabled
         if self.data_augmentation_enabled:
             for i in range(1, self.CLASSES + 1):
-                Audio.data_augumentation(ilib.get_directory(f"train/{i}", self.audio_adjust_enabled, self.reduce_noise_enabled))
+                Audio.data_augumentation(ilib.get_directory(f"{self.train}/{i}", self.audio_adjust_enabled, self.reduce_noise_enabled))
             print("Data augumentation was done")
 
     def do_data_pre_emphasis(self):
@@ -172,10 +171,10 @@ class Audio:
         dev_audio = {}
         for i in range(1, self.CLASSES + 1):
             train_audio[i] = np.vstack(Audio.pre_emphasis(
-                ilib.get_directory(f'train/{i}', self.audio_adjust_enabled, self.reduce_noise_enabled,
+                ilib.get_directory(f'{self.train}/{i}', self.audio_adjust_enabled, self.reduce_noise_enabled,
                                    self.data_augmentation_enabled)))
             dev_audio[i] = list(
-                Audio.pre_emphasis(ilib.get_directory(f'dev/{i}', self.audio_adjust_enabled, self.reduce_noise_enabled)))
+                Audio.pre_emphasis(ilib.get_directory(f'{self.dev}/{i}', self.audio_adjust_enabled, self.reduce_noise_enabled)))
         print("Pre emphasis was successfull")
         return train_audio, dev_audio
 
@@ -184,10 +183,10 @@ class Audio:
         dev_audio = {}
         for i in range(1, self.CLASSES + 1):
             train_audio[i] = np.vstack(list(ilib.wav16khz2mfcc(
-                ilib.get_directory(f'train/{i}', self.audio_adjust_enabled, self.reduce_noise_enabled,
+                ilib.get_directory(f'{self.train}/{i}', self.audio_adjust_enabled, self.reduce_noise_enabled,
                                    self.data_augmentation_enabled)).values()))
             dev_audio[i] = list(ilib.wav16khz2mfcc(
-                ilib.get_directory(f'train/{i}', self.audio_adjust_enabled, self.reduce_noise_enabled)).values())
+                ilib.get_directory(f'{self.train}/{i}', self.audio_adjust_enabled, self.reduce_noise_enabled)).values())
         print("Loading data was successful")
         return train_audio, dev_audio
 
