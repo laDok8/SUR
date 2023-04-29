@@ -18,7 +18,6 @@ import random
 CLASSES = 31
 data_augmentation_enabled = True
 
-
 def png_load(dir_name):
     """
     Loads all *.png images from directory dir_name into a dictionary. Keys are the file names
@@ -64,7 +63,7 @@ def random_scale(image):
     image = ImageOps.expand(image, (pad_x // 2, pad_y // 2, pad_x - pad_x // 2, pad_y - pad_y // 2))
     return image
 
-def augment_images(input_dir, output_dir, num_augmentations=3):
+def augment_images_gmm(input_dir, output_dir, num_augmentations=3):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -83,9 +82,9 @@ def get_train_all():
     train = {}
     dev = {}
     for i in range(1, CLASSES + 1):
-        train[i] = np.array(list(png_load(f"train2/{i}/da").values())).reshape(-1, 80 * 80)
-        dev[i] = np.array(list(png_load(f"dev2/{i}").values())).reshape(-1, 80 * 80)
-        print("Loading data was successful")
+        train[i] = np.array(list(png_load(f"train/{i}/da").values())).reshape(-1, 80 * 80)
+        dev[i] = np.array(list(png_load(f"dev/{i}").values())).reshape(-1, 80 * 80)
+    print("Loading data was successful")
 
     # Concatenate all class data
     train_all = np.concatenate([train[i] for i in range(1, CLASSES + 1)], axis=0)
@@ -95,9 +94,9 @@ def calculate_mean_face():
     train = {}
     dev = {}
     for i in range(1, CLASSES + 1):
-        train[i] = np.array(list(png_load(f"train2/{i}/da").values())).reshape(-1, 80 * 80)
-        dev[i] = np.array(list(png_load(f"dev2/{i}").values())).reshape(-1, 80 * 80)
-        print("Loading data was successful")
+        train[i] = np.array(list(png_load(f"train/{i}/da").values())).reshape(-1, 80 * 80)
+        dev[i] = np.array(list(png_load(f"dev/{i}").values())).reshape(-1, 80 * 80)
+    print("Loading data was successful")
 
     # Concatenate all class data
     train_all = np.concatenate([train[i] for i in range(1, CLASSES + 1)], axis=0)
@@ -108,15 +107,15 @@ def calculate_mean_face():
 
 def train_gmm():
     #for i in range(1,CLASSES+1):
-    #    augment_images(f"train/{i}", f"train/{i}/da", 3)
-    #    augment_images(f"dev/{i}", f"dev/{i}/da", 3)
+    #    augment_images(f"train/{i}/da", f"train/{i}/da", 3)
+    #    augment_images(f"dev/{i}", f"dev/{i}", 3)
 
     train = {}
     dev = {}
-    for i in range(1,CLASSES+1):
-        train[i] = np.array(list(png_load(f"train2/{i}/da").values())).reshape(-1, 80 * 80)
-        dev[i] = np.array(list(png_load(f"dev2/{i}").values())).reshape(-1, 80 * 80)
-        print("Loading data was successful")
+    for i in range(1,31+1):
+        train[i] = np.array(list(png_load(f"train/{i}/da").values())).reshape(-1, 80 * 80)
+        dev[i] = np.array(list(png_load(f"dev/{i}").values())).reshape(-1, 80 * 80)
+    print("Loading data was successful")
 
     # Concatenate all class data
     train_all = np.concatenate([train[i] for i in range(1, CLASSES + 1)], axis=0)
@@ -126,8 +125,8 @@ def train_gmm():
 
     dev_subs_mean = {}
     train_subs_mean = {}
+    print(f"Creating subs mean classes")
     for i in range(1, CLASSES+1):
-        print(f"Creating subs mean class {i}")
         data_subs_mean = train[i] - mean_face
         V, S, U = np.linalg.svd(train_all, full_matrices=False)
         train_subs_mean[i] = data_subs_mean.dot(U.T)
@@ -140,8 +139,8 @@ def train_gmm():
     mus_list = []
     covs_list = []
 
+    print(f"Training GMM")
     for i in range(1, CLASSES + 1):
-        print(f"Training GMM class {i}")
         data = train_subs_mean[i]
         init_ws = np.ones(num_components) / num_components
         init_mus = data[np.random.choice(len(data), num_components, replace=False)]
@@ -163,8 +162,8 @@ def eval(dev_subs_mean, ws_list, mus_list, covs_list):
     dev_true_labels = []
     dev_predicted_labels = []
 
+    print(f"Evaluating GMM classes")
     for i in range(1, CLASSES + 1):
-        print(f"Evaluating GMM class {i}")
         dev_true_labels.extend([i - 1] * len(dev_subs_mean[i]))
         dev_predicted_labels.extend(classify_gmm(dev_subs_mean[i], ws_list, mus_list, covs_list))
 
@@ -175,17 +174,17 @@ def eval(dev_subs_mean, ws_list, mus_list, covs_list):
     accuracy = np.sum(dev_true_labels == dev_predicted_labels) / len(dev_true_labels)
     print("Accuracy:", accuracy)
 
-def predict_gmm(data):
-    mean_face = calculate_mean_face()
+# def predict_gmm(data):
+#     mean_face = calculate_mean_face()
 
-    print(f"Creating subs mean class {i}")
-    V, S, U = np.linalg.svd(get_train_all(), full_matrices=False)
+#     print(f"Creating subs mean class {i}")
+#     V, S, U = np.linalg.svd(get_train_all(), full_matrices=False)
 
-    dev_subs_mean = (data - mean_face).dot(U.T)
-    result = classify_gmm(dev_subs_mean, ws_list, mus_list, covs_list)
+#     dev_subs_mean = (data - mean_face).dot(U.T)
+#     result = classify_gmm(dev_subs_mean, ws_list, mus_list, covs_list)
 
-    return result
+#     return result
 
 
-dev_subs_mean, ws_list, mus_list, covs_list = train_gmm()
-eval(dev_subs_mean, ws_list, mus_list, covs_list)
+# dev_subs_mean, ws_list, mus_list, covs_list = train_gmm()
+# eval(dev_subs_mean, ws_list, mus_list, covs_list)
