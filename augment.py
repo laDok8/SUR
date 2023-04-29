@@ -1,17 +1,25 @@
 import os
-import random
-import numpy as np
-from ikrlib import png2fea
-from PIL import Image
 import Augmentor
 
-def augment_images(input_dir, output_dir, num_augmentations=10, random_noice=False):
+def augment_images(input_dir, output_dir, num_augmentations=10, random_noice=False, num_classes=31):
+    if os.path.exists(output_dir):
+        for f in os.listdir(output_dir):
+            for cls in range(1, num_classes + 1):
+                if os.path.exists(os.path.join(output_dir, str(cls))):
+                    for f in os.listdir(os.path.join(output_dir, str(cls))):
+                        os.remove(os.path.join(output_dir, str(cls), f))
+                    os.rmdir(os.path.join(output_dir, str(cls)))
+        os.rmdir(output_dir)
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
-    for cls in range(1, 32):
+    for cls in range(1, num_classes + 1):
         in_dir = os.path.join(input_dir,str(cls))
         out_dir = os.path.join(output_dir,str(cls))
+        if os.path.exists(os.path.join(in_dir,'out')):
+            for f in os.listdir(os.path.join(in_dir,'out')):
+                os.remove(os.path.join(in_dir,'out',f))
+            os.rmdir(os.path.join(in_dir,'out'))
         if not os.path.join(output_dir):
             os.makedirs(output_dir)
         p = Augmentor.Pipeline(source_directory=in_dir, output_directory='out')

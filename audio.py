@@ -209,17 +209,16 @@ class Audio:
         if eval:
             for i in range(1, self.CLASSES + 1):
                 train_audio[i] = np.vstack(list(ilib.wav16khz2mfcc(
-                    ilib.get_directory(f'{self.train}/{i}', self.audio_adjust_enabled, self.reduce_noise_enabled,
-                                       self.data_augmentation_enabled)).values()))
+                    ilib.get_directory(f'{self.train}/{i}', True, True, True)).values()))
             dev_audio = ilib.wav16khz2mfcc(
-                ilib.get_directory(f'{self.dev}', self.audio_adjust_enabled, self.reduce_noise_enabled))
+                ilib.get_directory(f'{self.dev}', True, True))
         else:
             for i in range(1, self.CLASSES + 1):
                 train_audio[i] = np.vstack(list(ilib.wav16khz2mfcc(
-                    ilib.get_directory(f'{self.train}/{i}', self.audio_adjust_enabled, self.reduce_noise_enabled,
-                                       self.data_augmentation_enabled)).values()))
+                    ilib.get_directory(f'{self.train}/{i}', True, True,
+                                       True)).values()))
                 dev_audio[i] = list(ilib.wav16khz2mfcc(
-                    ilib.get_directory(f'{self.dev}/{i}', self.audio_adjust_enabled, self.reduce_noise_enabled)).values())
+                    ilib.get_directory(f'{self.dev}/{i}', True, True)).values())
         print("Loading data was successful")
         return train_audio, dev_audio
 
@@ -270,7 +269,7 @@ class Audio:
         total = 0
 
         predicted_classes = []
-
+        files = []
         if eval_format == 'old':
             for true_class in range(1, self.CLASSES + 1):
                 print("Proccessing class")
@@ -324,12 +323,14 @@ class Audio:
 
                 # Store the probabilities for each class
                 probabilities = np.exp(likelihoods - logsumexp(likelihoods))
-                predicted_classes.append(probabilities + 1e-10)
+                # predicted_classes.append(probabilities + 1e-10)
+                predicted_classes.append(probabilities)
+                files.append(key)
 
             # Compute the average probability for each class
             probabilities_matrix = np.vstack(predicted_classes)
             average_probabilities = probabilities_matrix.mean(axis=0)
-            return predicted_classes, None
+            return predicted_classes, files
 
         accuracy = correct / total
         print(f"Fraction of correctly recognized targets: {accuracy * 100}%")
