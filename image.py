@@ -45,7 +45,7 @@ class CNNModel(nn.Module):
             x = self.pool(F.relu(self.conv3(x)))  # 10x10x32
             x = x.view(-1, 32 * 10 * 10)  # 3200
             x = self.fc1(x)  # 128
-            x = self.soft_max(self.fc2(x))
+            x = self.fc2(x)
             return x
 
     def __init__(self, num_classes=31, lr=int(1e-5)):
@@ -91,8 +91,8 @@ class CNNModel(nn.Module):
                 accuracy = correct / total
                 losses.append(train_loss)
                 accuracys.append(accuracy)
-                print(
-                    f'Epoch: {epochs}/{num_epochs}, Loss: {train_loss:.4f}, Accuracy: {accuracy:.4f}, {correct} and {total}')
+                print(f'Epoch: {epochs+1}/{num_epochs}, Loss: {train_loss:.4f}, Accuracy: {accuracy:.4f}, {correct} and {total}')
+        print(f'Epoch: {epochs+1}/{num_epochs}, Loss: {train_loss:.4f}, Accuracy: {accuracy:.4f}, {correct} and {total}')
 
         return accuracys, losses
 
@@ -101,4 +101,4 @@ class CNNModel(nn.Module):
         # to get max ->  _, predicted = torch.max(outputs.data, 1)
         self.model.eval()
         loader = DataLoader(dataset, batch_size=1, shuffle=False)
-        return [self.model(inputs.to(self.dev)).cpu().detach().numpy() for inputs, _ in loader]
+        return [self.model(inputs.to(self.dev)) for inputs, _ in loader]

@@ -1,3 +1,4 @@
+import torch
 import numpy as np
 import torch.nn as nn
 from numpy.random import randint
@@ -38,6 +39,10 @@ class GMMmodel(nn.Module):
         # data_np = self.toBlackWhite(data_np)
         # data_np = data_np.reshape(-1,80*80)
         # TODO zprovoznit pro dataset data
+        if isinstance(data, torch.Tensor):
+            data = np.array(data).transpose(0,2,3,1)
+            data = self.toBlackWhite(data)
+            data = data.reshape(-1,80*80)
 
         log_probs = np.array(
             [ilib.logpdf_gmm(data, self.ws[i], self.mus[i], self.covs[i]) for i in range(self.num_classes)])
