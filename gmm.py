@@ -35,10 +35,6 @@ class GMMmodel(nn.Module):
         return np.dot(image_arr[..., :3], [0.299, 0.587, 0.114])
 
     def predict(self, data):
-        # data_np = np.array(data).transpose(0,2,3,1)
-        # data_np = self.toBlackWhite(data_np)
-        # data_np = data_np.reshape(-1,80*80)
-        # TODO zprovoznit pro dataset data
         if isinstance(data, torch.Tensor):
             data = np.array(data).transpose(0,2,3,1)
             data = self.toBlackWhite(data)
