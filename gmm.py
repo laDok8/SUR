@@ -47,24 +47,30 @@ class GMMmodel(nn.Module):
         log_probs = np.array(
             [ilib.logpdf_gmm(data, self.ws[i], self.mus[i], self.covs[i]) for i in range(self.num_classes)])
         # return np.argmax(log_probs, axis=0) + 1
+
         return log_probs
 
-    def train_gmm(self, train_dataset, test_dataset):
+    def train_gmm(self, train_dataset, test_dataset, eval_dataset):
         train_dataset_np = np.array(train_dataset.images).transpose(0, 2, 3, 1)
         test_dataset_np = np.array(test_dataset.images).transpose(0, 2, 3, 1)
+        eval_dataset_np = np.array(eval_dataset.images).transpose(0, 2, 3, 1)
 
         # to black and white
         train_dataset_np = self.toBlackWhite(train_dataset_np)
         test_dataset_np = self.toBlackWhite(test_dataset_np)
+        eval_dataset_np = self.toBlackWhite(eval_dataset_np)
 
         # (186, 80, 80) -> (186, 6400)
         train_dataset_np = train_dataset_np.reshape(-1, 80 * 80)
         test_dataset_np = test_dataset_np.reshape(-1, 80 * 80)
+        eval_dataset_np = eval_dataset_np.reshape(-1, 80 * 80)
 
         # separate classes
         train = [[train_dataset_np[i] for i in range(len(train_dataset_np)) if train_dataset.labels[i] == j] for j in
                  range(0, self.num_classes)]
         dev = [[test_dataset_np[i] for i in range(len(test_dataset_np)) if test_dataset.labels[i] == j] for j in
+               range(0, self.num_classes)]
+        eval_data = [[eval_dataset_np[i] for i in range(len(eval_dataset_np)) if eval_dataset.labels[i] == j] for j in
                range(0, self.num_classes)]
 
         # Concatenate all class data
@@ -74,11 +80,14 @@ class GMMmodel(nn.Module):
 
         dev_subs_mean = {}
         train_subs_mean = {}
+        eval_subs_mean = {}
         print(f"Creating subs mean classes SVD")
+        V, S, U = np.linalg.svd(train_all, full_matrices=False)
         for i in range(0, self.num_classes):
-            V, S, U = np.linalg.svd(train_all, full_matrices=False)
             train_subs_mean[i] = (train[i] - mean_face).dot(U.T)
             dev_subs_mean[i] = (dev[i] - mean_face).dot(U.T)
+
+        eval_subs_mean[0] = (eval_data[0] - mean_face).dot(U.T)
 
         print(f"Training GMM")
         for i in range(0, self.num_classes):
@@ -102,4 +111,4 @@ class GMMmodel(nn.Module):
             corect += np.sum(labels_i == i)
         print(f"Accuracy: {corect / len(test_dataset_np)}")
 
-        return None
+        return eval_subs_mean

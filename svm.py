@@ -37,3 +37,12 @@ class SVCTrain():
         transposed = np.transpose(data, (1, 2, 0))
         new_d = np.array(list(map(self.toBlackWhite, transposed))).reshape(-1, 80 * 80)
         return self.clf.predict_proba(new_d)
+
+    def predict_whole_dataset(self, data):
+        # Check if data has batch dimension, if not, add one
+        if data.ndim == 3:
+            data = np.expand_dims(data, axis=0)
+
+        transposed = np.transpose(data, (0, 2, 3, 1))
+        new_d = np.array(list(map(self.toBlackWhite, transposed))).reshape(-1, 80 * 80)
+        return self.clf.predict_proba(new_d)
