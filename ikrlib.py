@@ -393,10 +393,13 @@ def get_root_dir(path):
     return root_dir
 
 
-def get_last_two_dirs(path):
+def get_last_two_dirs(path, eval=True):
     dir1 = os.path.dirname(path)
     if not dir1:
         return path
+
+    if eval:
+        return dir1
 
     dir2 = os.path.dirname(dir1)
     if not dir2:

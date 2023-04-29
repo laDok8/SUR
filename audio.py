@@ -1,3 +1,5 @@
+from scipy.special import logsumexp
+
 import ikrlib as ilib
 import numpy as np
 import os
@@ -6,6 +8,7 @@ import soundfile as sf
 import noisereduce as nr
 from pydub import AudioSegment
 from pydub.silence import detect_nonsilent
+
 
 class Audio:
     def __init__(self, CLASSES, train_path, dev_path):
@@ -30,6 +33,7 @@ class Audio:
         if not os.path.isdir(new_dir):
             os.mkdir(new_dir)
         for f in os.listdir(dir):
+            print(f"Removing silence from file {f}")
             if f[-3:] == "wav":
                 input_file = ilib.get_last_two_dirs(dir) + "/" + f
                 audio = AudioSegment.from_wav(input_file)
@@ -62,6 +66,7 @@ class Audio:
                 noise_sample = audio[:int(sr * 0.5)]
 
                 # Perform noise reduction using the noise sample
+                print(f)
                 reduced_audio = nr.reduce_noise(y=audio, sr=sr, y_noise=noise_sample)
 
                 # Save the noise-reduced audio to a new file
@@ -142,20 +147,30 @@ class Audio:
         return cms_coeffs
 
 
-    def do_audio_adjust(self, audio_adjust_enabled):
+    def do_audio_adjust(self, audio_adjust_enabled, eval=True):
         self.audio_adjust_enabled = audio_adjust_enabled
         if self.audio_adjust_enabled:
-            for i in range(1, self.CLASSES + 1):
-                Audio.audio_adjust(ilib.get_directory(f"{self.train}/{i}"))
-                Audio.audio_adjust(ilib.get_directory(f"{self.dev}/{i}"))
+            if eval:
+                for i in range(1, self.CLASSES + 1):
+                    Audio.audio_adjust(ilib.get_directory(f"{self.train}/{i}"))
+                Audio.audio_adjust(ilib.get_directory(f"{self.dev}"))
+            else:
+                for i in range(1, self.CLASSES + 1):
+                    Audio.audio_adjust(ilib.get_directory(f"{self.train}/{i}"))
+                    Audio.audio_adjust(ilib.get_directory(f"{self.dev}/{i}"))
         print("Silence was successfully removed")
 
-    def do_reduce_noise(self, reduce_noise_enabled):
+    def do_reduce_noise(self, reduce_noise_enabled, eval=True):
         self.reduce_noise_enabled = reduce_noise_enabled
         if reduce_noise_enabled:
-            for i in range(1, self.CLASSES + 1):
-                Audio.reduce_noise(ilib.get_directory(f"{self.train}/{i}", self.audio_adjust_enabled))
-                Audio.reduce_noise(ilib.get_directory(f"{self.dev}/{i}", self.audio_adjust_enabled))
+            if eval:
+                for i in range(1, self.CLASSES + 1):
+                    Audio.reduce_noise(ilib.get_directory(f"{self.train}/{i}", self.audio_adjust_enabled))
+                Audio.reduce_noise(ilib.get_directory(f"{self.dev}", self.audio_adjust_enabled))
+            else:
+                for i in range(1, self.CLASSES + 1):
+                    Audio.reduce_noise(ilib.get_directory(f"{self.train}/{i}", self.audio_adjust_enabled))
+                    Audio.reduce_noise(ilib.get_directory(f"{self.dev}/{i}", self.audio_adjust_enabled))
 
             print("Noise was successfully removed")
 
@@ -166,27 +181,45 @@ class Audio:
                 Audio.data_augumentation(ilib.get_directory(f"{self.train}/{i}", self.audio_adjust_enabled, self.reduce_noise_enabled))
             print("Data augumentation was done")
 
-    def do_data_pre_emphasis(self):
+    def do_data_pre_emphasis(self, eval=True):
         train_audio = {}
         dev_audio = {}
-        for i in range(1, self.CLASSES + 1):
-            train_audio[i] = np.vstack(Audio.pre_emphasis(
-                ilib.get_directory(f'{self.train}/{i}', self.audio_adjust_enabled, self.reduce_noise_enabled,
-                                   self.data_augmentation_enabled)))
-            dev_audio[i] = list(
-                Audio.pre_emphasis(ilib.get_directory(f'{self.dev}/{i}', self.audio_adjust_enabled, self.reduce_noise_enabled)))
+
+        if eval:
+            for i in range(1, self.CLASSES + 1):
+                train_audio[i] = np.vstack(Audio.pre_emphasis(
+                    ilib.get_directory(f'{self.train}/{i}', self.audio_adjust_enabled, self.reduce_noise_enabled,
+                                       self.data_augmentation_enabled)))
+            dev_audio = list(
+                Audio.pre_emphasis(ilib.get_directory(f'{self.dev}', self.audio_adjust_enabled, self.reduce_noise_enabled)))
+        else:
+            for i in range(1, self.CLASSES + 1):
+                train_audio[i] = np.vstack(Audio.pre_emphasis(
+                    ilib.get_directory(f'{self.train}/{i}', self.audio_adjust_enabled, self.reduce_noise_enabled,
+                                       self.data_augmentation_enabled)))
+                dev_audio[i] = list(
+                    Audio.pre_emphasis(ilib.get_directory(f'{self.dev}/{i}', self.audio_adjust_enabled, self.reduce_noise_enabled)))
         print("Pre emphasis was successfull")
         return train_audio, dev_audio
 
-    def do_classic_load(self):
+    def do_classic_load(self, eval=True):
         train_audio = {}
         dev_audio = {}
-        for i in range(1, self.CLASSES + 1):
-            train_audio[i] = np.vstack(list(ilib.wav16khz2mfcc(
-                ilib.get_directory(f'{self.train}/{i}', self.audio_adjust_enabled, self.reduce_noise_enabled,
-                                   self.data_augmentation_enabled)).values()))
-            dev_audio[i] = list(ilib.wav16khz2mfcc(
-                ilib.get_directory(f'{self.train}/{i}', self.audio_adjust_enabled, self.reduce_noise_enabled)).values())
+
+        if eval:
+            for i in range(1, self.CLASSES + 1):
+                train_audio[i] = np.vstack(list(ilib.wav16khz2mfcc(
+                    ilib.get_directory(f'{self.train}/{i}', self.audio_adjust_enabled, self.reduce_noise_enabled,
+                                       self.data_augmentation_enabled)).values()))
+            dev_audio = ilib.wav16khz2mfcc(
+                ilib.get_directory(f'{self.dev}', self.audio_adjust_enabled, self.reduce_noise_enabled))
+        else:
+            for i in range(1, self.CLASSES + 1):
+                train_audio[i] = np.vstack(list(ilib.wav16khz2mfcc(
+                    ilib.get_directory(f'{self.train}/{i}', self.audio_adjust_enabled, self.reduce_noise_enabled,
+                                       self.data_augmentation_enabled)).values()))
+                dev_audio[i] = list(ilib.wav16khz2mfcc(
+                    ilib.get_directory(f'{self.dev}/{i}', self.audio_adjust_enabled, self.reduce_noise_enabled)).values())
         print("Loading data was successful")
         return train_audio, dev_audio
 
@@ -213,7 +246,7 @@ class Audio:
                 train_audio[i] = Audio.cepstral_mean_subtraction(train_audio[i])
         return train_audio
 
-    def train(self, train_audio, M=3, EPOCH=30):
+    def train_gmm(self, train_audio, M=3, EPOCH=30):
         MUs = {}
         COVs = {}
         Ws = {}
@@ -232,14 +265,46 @@ class Audio:
 
         return Ws, MUs, COVs
 
-    def eval(self, dev_audio, Ws, MUs, COVs):
+    def eval(self, dev_audio, Ws, MUs, COVs, eval_format='old'):
         correct = 0
         total = 0
 
         predicted_classes = []
-        for true_class in range(1, self.CLASSES + 1):
-            for dev_p_i in dev_audio[true_class]:
-                dev_p_i_cpy = dev_p_i.copy()
+
+        if eval_format == 'old':
+            for true_class in range(1, self.CLASSES + 1):
+                print("Proccessing class")
+                for dev_p_i in dev_audio[true_class]:
+                    dev_p_i_cpy = dev_p_i.copy()
+
+                    if self.coefficients_normalization:
+                        dev_p_i_cpy = Audio.min_max_normalize(dev_p_i_cpy)
+
+                    if self.delta_coefficients_enabled:
+                        test_t_delta_coeffs = Audio.compute_deltas(dev_p_i_cpy, window_size=2)
+                        test_t_derivative_delta_coeffs = Audio.compute_deltas(test_t_delta_coeffs, window_size=2)
+
+                        dev_p_i_cpy = np.concatenate((dev_p_i_cpy, test_t_delta_coeffs, test_t_derivative_delta_coeffs),
+                                                     axis=1)
+
+                    if self.cepstral_mean_subtraction_enabled:
+                        dev_p_i_cpy = Audio.cepstral_mean_subtraction(dev_p_i_cpy)
+
+                    # Compute the likelihoods for all the classes
+                    likelihoods = np.array(
+                        [ilib.logpdf_gmm(dev_p_i_cpy, Ws[i], MUs[i], COVs[i]).sum() for i in range(1, 32)])
+
+                    # Find the class with the highest likelihood
+                    predicted_class = np.argmax(likelihoods) + 1
+                    predicted_classes.append(predicted_class)
+
+                    # Compare the predicted class with the true class
+                    if predicted_class == true_class:
+                        correct += 1
+                    total += 1
+        elif eval_format == 'new':
+            for key in dev_audio:
+                dev_p_i_cpy = dev_audio[key].copy()
 
                 if self.coefficients_normalization:
                     dev_p_i_cpy = Audio.min_max_normalize(dev_p_i_cpy)
@@ -254,18 +319,17 @@ class Audio:
                 if self.cepstral_mean_subtraction_enabled:
                     dev_p_i_cpy = Audio.cepstral_mean_subtraction(dev_p_i_cpy)
 
-                # Compute the likelihoods for all the classes
                 likelihoods = np.array(
                     [ilib.logpdf_gmm(dev_p_i_cpy, Ws[i], MUs[i], COVs[i]).sum() for i in range(1, 32)])
 
-                # Find the class with the highest likelihood
-                predicted_class = np.argmax(likelihoods) + 1
-                predicted_classes.append(predicted_class)
+                # Store the probabilities for each class
+                probabilities = np.exp(likelihoods - logsumexp(likelihoods))
+                predicted_classes.append(probabilities + 1e-10)
 
-                # Compare the predicted class with the true class
-                if predicted_class == true_class:
-                    correct += 1
-                total += 1
+            # Compute the average probability for each class
+            probabilities_matrix = np.vstack(predicted_classes)
+            average_probabilities = probabilities_matrix.mean(axis=0)
+            return predicted_classes, None
 
         accuracy = correct / total
         print(f"Fraction of correctly recognized targets: {accuracy * 100}%")
