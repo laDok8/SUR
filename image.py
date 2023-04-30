@@ -63,7 +63,7 @@ class CNNModel(nn.Module):
         dev_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
         losses = []
         accuracys = []
-        for epochs in range(num_epochs):
+        for epochs in range(num_epochs + 1):
             self.model.train()
             train_loss = 0
 
@@ -91,8 +91,7 @@ class CNNModel(nn.Module):
                 accuracy = correct / total
                 losses.append(train_loss)
                 accuracys.append(accuracy)
-                print(f'Epoch: {epochs+1}/{num_epochs}, Loss: {train_loss:.4f}, Accuracy: {accuracy:.4f}, {correct} and {total}')
-        print(f'Epoch: {epochs+1}/{num_epochs}, Loss: {train_loss:.4f}, Accuracy: {accuracy:.4f}, {correct} and {total}')
+                print(f'Epoch: {epochs}/{num_epochs}, Loss: {train_loss:.4f}, Accuracy: {accuracy:.4f}, {correct} and {total}')
 
         return accuracys, losses
 
