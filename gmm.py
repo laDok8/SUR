@@ -97,9 +97,13 @@ class GMMmodel(nn.Module):
             self.mus.append(mus_m)
             self.covs.append(covs_m)
 
-        # print mu shape
-        print(self.mus[0].shape, self.mus[1].shape)
-        print(len(self.mus))
+        for jj in range(10):
+            # TTL_t je doveryhodnosť
+            for i in range(0, self.num_classes):
+                data = train_subs_mean[i]
+
+                self.ws[i], self.mus[i], self.covs[i], TTL = ilib.train_gmm(data, self.ws[i], self.mus[i], self.covs[i])
+                print(f'Iteration: {jj} Total log likelihood: {TTL} for person {i}')
 
         corect = 0
         for i in range(0, self.num_classes):
