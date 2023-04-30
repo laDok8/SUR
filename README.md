@@ -1,3 +1,5 @@
+### python3.9 required
+
 https://www.fit.vutbr.cz/study/courses/SUR/public/projekt_2022-2023/SUR_projekt2022-2023.zip
 
 Tento archív obsahuje dva adresáře:
