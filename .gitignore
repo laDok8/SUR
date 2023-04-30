@@ -1,5 +1,7 @@
-SUR_projekt2022-2023.*
+SUR_projekt2022-2023*
 dev/
 train/
 __pycache__/
 eval/
+out*.txt
+.DS_Store
